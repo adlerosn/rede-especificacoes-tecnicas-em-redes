@@ -1,0 +1,5 @@
+/*.nlp*
+/corpus/**
+/corpus
+/virtualenv/**
+/virtualenv
