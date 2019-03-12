@@ -3,3 +3,7 @@
 /corpus
 /virtualenv/**
 /virtualenv
+**/__pycache__/**
+**/__pycache__
+/.ropeproject
+/.ropeproject/**
