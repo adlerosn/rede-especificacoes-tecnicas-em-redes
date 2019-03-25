@@ -101,6 +101,7 @@ def process_files(files=list()):
             text['coref_cluster'].append({
                 'main': list(range(coref_cluster.main[0].i, coref_cluster.main[-1].i+1)),
                 'mentions': [list(range(mention[0].i, mention[-1].i+1)) for mention in coref_cluster.mentions],
+                'vector': vecDoc[coref_cluster.main[0].i: coref_cluster.main[-1].i+1].vector.tolist(),
             })
         for sentence in nlpDoc.sents:
             nlpSentTokens = list(sentence)
@@ -199,7 +200,10 @@ def main():
     if len(sys.argv) > 2:
         print('Preparing search...', file=sys.stderr)
         _, left_op, right_op, *_ = sys.argv
-        paths = corpus.find_knowledge_source(left_op, right_op)
+        paths = corpus.find_knowledge_source(left_op, right_op, 8)
         print('Printing matches between %r and %r...' % (left_op, right_op), file=sys.stderr)
-        for match in paths:
+        for i, match in enumerate(paths):
+            print("Match #%d ø%d" % (i+1, len(match)))
             print(match)
+            for elem in match:
+                print(elem)

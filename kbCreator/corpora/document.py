@@ -24,7 +24,7 @@ class Document:
         self._sentiment = data['sentiment']
         self._chunks = [Chunk(self, ck) for ck in data['noun_chunks']]
         self._clusters = [Cluster(self, cl) for cl in data['coref_cluster']]
-        self._sentences = [Sentence(self, sn) for sn in data['sentences']]
+        self._sentences = [Sentence(self, sn, i+1) for i, sn in enumerate(data['sentences'])]
 
     @property
     def related_entities(self):

@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import numpy
+import sys
 
 
 class VectorMixin:
@@ -17,8 +18,13 @@ class VectorMixin:
             self._vector_norm = numpy.sqrt((self.vector ** 2).sum())
         return self._vector_norm
 
+    @property
+    def has_vector(self):
+        return hasattr(self, '_vector') and self._vector is not None
+
     def similar_with(self, other):
         if self._vector is None:
+            print(self, file=sys.stderr)
             raise ValueError('Object does not contain a vector: %r' % self)
         if not hasattr(other, '_vector'):
             return other.contains(self)

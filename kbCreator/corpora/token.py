@@ -33,4 +33,7 @@ class Token(VectorMixin):
 
     @property
     def related_entities(self):
-        yield from iter(list())
+        yield self.sentence
+
+    def __str__(self):
+        return 'Token: %s @ Snt #%s from %s' % (self._text, str(self._sentence._seq), self._document._source)

@@ -15,8 +15,11 @@ class Chunk(VectorMixin):
 
     @property
     def related_entities(self):
-        yield from self._tokens
-        for snt in {tk.sentence for tk in self._tokens}:
-            yield from snt._tokens
-            yield from snt._chunks
-            yield from snt._clusters
+        yield self._tokens[0]._sentence
+
+    def __str__(self):
+        return 'Noun Chunk: %s @ Snt #%s from %s' % (
+            ' '.join(map(lambda a: a._text, self._tokens)),
+            str(self._tokens[0]._sentence._seq),
+            self._document._source
+        )
