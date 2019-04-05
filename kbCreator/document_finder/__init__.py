@@ -200,6 +200,7 @@ class ITURec(OnlineStandard):
 
 
 classes['itu'] = ITURec
+classes['rfc'] = RFCStandard
 
 __all__ = [
     'classes',
