@@ -6,7 +6,9 @@ import sys
 import json
 import datetime
 
+from typing import Any
 from typing import Dict
+from typing import List
 from typing import Tuple
 from typing import Optional
 from pathlib import Path
@@ -78,6 +80,7 @@ class OnlineStandard(object):
     def download_all(self) -> Dict[str, bytes]: pass
     def cached_all(self) -> Dict[str, Path]: pass
     def cached(self) -> Optional[Path]: pass
+    def context(self, path: Path) -> Dict[str, str]: return dict()
 
 
 class RFCStandard(OnlineStandard):
@@ -95,10 +98,10 @@ class RFCStandard(OnlineStandard):
         return {'latest': cached_all}
 
     def cached(self) -> Optional[Path]:
-        return self.cached_all()['latest']
+        return self.cached_all().get('latest')
 
 
-class ITURec(OnlineStandard):
+class ITURecommendation(OnlineStandard):
     cachedir = Path('cache', 'itu')
     langorder = ('en', 'fr', 'es')
     extorder = ('pdf', 'doc', 'zip', 'doc.zip')
@@ -198,10 +201,46 @@ class ITURec(OnlineStandard):
         else:
             return all_cached['%02d_%02d_%s_%s.%s' % candidates[0]]
 
+    def context(self, path: Path) -> Dict[str, str]:
+        return {'citing_date': '-'.join(path.name.split('_', 2)[:2])}
 
-classes['itu'] = ITURec
+
+class ISOStandard(OnlineStandard):
+    pass
+
+
+def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List[OnlineStandard]:
+    refs = list()
+    for match in rgx_itu.finditer(text):
+        groups = match.groups()
+        rec = groups[1].rstrip('.')
+        yr = None
+        mo = None
+        rev = None
+        if groups[2] is not None:
+            yr = expand_year(groups[2].split('/')[-1])
+            if '/' in groups[2]:
+                mo = groups[2].split('/')[-2]
+        if yr is not None:
+            if mo is not None:
+                rev = "%04d-%02d" % (int(yr), int(mo))
+            else:
+                rev = "%04d" % (int(yr),)
+        refs.append(ITURecommendation(rec, rev, **context))
+    for match in rgx_rfc.finditer(text):
+        rfcno = match.groups()[1]
+        refs.append(RFCStandard(rfcno, **context))
+    for match in rgx_iso.finditer(text):
+        groups = match.groups()
+        refs.append(ISOStandard(groups[2], expand_year(groups[3]), **context))
+    return refs
+
+
+classes['itu'] = ITURecommendation
 classes['rfc'] = RFCStandard
+classes['iso'] = ISOStandard
 
 __all__ = [
     'classes',
+    'find_references',
 ]

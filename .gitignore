@@ -9,3 +9,4 @@
 **/__pycache__
 /.ropeproject
 /.ropeproject/**
+/.tool-versions
