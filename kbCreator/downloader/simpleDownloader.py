@@ -59,7 +59,7 @@ def getUrlBytes(url, giveUpOn403=False):
         request.add_header("Cookie", '; '.join(map(lambda a: '='.join(a), cookie.items())))
     response = None
     try:
-        response = urllib.request.urlopen(request, timeout=30)
+        response = urllib.request.urlopen(request, timeout=45)
     except urllib.error.HTTPError as e:
         if e.code == 429:
             print('[URL] Got 429 (Too Many Requests): sleeping for 5 seconds')

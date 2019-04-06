@@ -10,8 +10,19 @@ from .document_finder import find_references as referenceFinder
 
 def main():
     rootsrc, rootname = Path("rootdoc.txt").read_text().splitlines()
-    docCchMgr = docClasses[rootsrc](rootname)
-    docPath = docCchMgr.cached()
-    doc = DocumentFromFile(str(docPath)).parse()
-    referenceFinder(doc, docCchMgr.context(docPath))
-    print(doc[:50]+'...')
+    analyzedDocPaths = list()
+    pendingDocCchMgr = [docClasses[rootsrc](rootname)]
+    while len(pendingDocCchMgr) > 0:
+        docCchMgr, *pendingDocCchMgr = pendingDocCchMgr
+        print("Document: %s" % docCchMgr._identifier)
+        docPath = docCchMgr.cached()
+        if docPath in analyzedDocPaths:
+            continue
+        analyzedDocPaths.append(docPath)
+        docFF = DocumentFromFile(str(docPath))
+        if docFF is None:
+            continue
+        doc = docFF.parse()
+        newReferences = referenceFinder(doc, docCchMgr.context(docPath))
+        pendingDocCchMgr = [*pendingDocCchMgr, *newReferences]
+        print("Pending queue: %03d" % len(pendingDocCchMgr))

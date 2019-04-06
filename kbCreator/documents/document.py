@@ -87,6 +87,7 @@ def cleanup_page_from_header_and_footer(pages, ignorable_header, ignorable_foote
 
 def parse_toc(pages):
     toc = list()
+    return toc  # No one will miss the table of contents that never returned because instruction pointer got stuck in an infinite loop regex
     for page in pages:
         page_content = '\n'.join(page[0]).split('\n'*3)[0]
         while page_content.startswith(' '*20):

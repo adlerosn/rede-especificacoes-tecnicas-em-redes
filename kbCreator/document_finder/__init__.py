@@ -94,7 +94,7 @@ class RFCStandard(OnlineStandard):
         type(self).cachedir.mkdir(parents=True, exist_ok=True)
         cached_all = type(self).cachedir.joinpath(self._identifier+'.txt')
         if not cached_all.exists():
-            cached_all.write_bytes(self.download_all())
+            cached_all.write_bytes(self.download_all()['latest'])
         return {'latest': cached_all}
 
     def cached(self) -> Optional[Path]:
@@ -103,12 +103,13 @@ class RFCStandard(OnlineStandard):
 
 class ITURecommendation(OnlineStandard):
     cachedir = Path('cache', 'itu')
-    langorder = ('en', 'fr', 'es')
+    langorder = ('en', 'fr', 'es', 'ar', 'ru', 'ch')
     extorder = ('pdf', 'doc', 'zip', 'doc.zip')
 
     def download_all(self) -> Dict[str, bytes]:
         d = dict()
         simpleDownloader.cleanCookies()
+        print(f"https://www.itu.int/rec/T-REC-{self._identifier}/en")
         bs_documents = BeautifulSoup(simpleDownloader.getUrlBytes(f"https://www.itu.int/rec/T-REC-{self._identifier}/en"))
         for match in bs_documents.select('tr'):
             if match.find('a', href=True) is not None and match.find('table') is None:
@@ -131,12 +132,15 @@ class ITURecommendation(OnlineStandard):
                                 continue
                             lng = download_allline.findAll('td')[0].text.strip().rstrip(':').rstrip().lower()[:2]
                             dwn = download_allline.find('a', href=True)['href']
-                            type = dwn.split('!!', 1)[1].split('&', 1)[0].split('-', 1)[0].lower()
+                            print(dwn)
+                            type = dwn.split('!', 2)[2].split('&', 1)[0].split('-', 1)[0].lower()
                             ext = ({
                                 'pdf': 'pdf',
                                 'msw': 'doc',
                                 'zwd': 'doc.zip',
-                            }).get(type, type)
+                                'soft': 'zip',
+                                'zpf': 'zip',
+                            })[type]
                             d['_'.join([yr, mo, st, lng])+'.'+ext] = simpleDownloader.getUrlBytes(dwn)
         return d
 
@@ -181,7 +185,7 @@ class ITURecommendation(OnlineStandard):
             yr = self._revision[0]
             mo = self._revision[1]
             filtered = list(filter(
-                lambda cand: (cand[0] == yr) if (mo > 12) else (cand[0] == yr and cand[1] == mo),
+                lambda cand: (int(cand[0]) == int(yr)) if (int(mo) > 12) else (int(cand[0]) == int(yr) and int(cand[1]) == int(mo)),
                 candidates
             ))
             if len(filtered) > 0:
@@ -191,7 +195,7 @@ class ITURecommendation(OnlineStandard):
             yr = self._citing_date[0]
             mo = self._citing_date[1]
             filtered = list(filter(
-                lambda cand: (cand[0], cand[1]) <= (yr, mo),
+                lambda cand: (int(cand[0]), int(cand[1])) <= (int(yr), int(mo)),
                 candidates
             ))
             if len(filtered) > 0:
@@ -206,14 +210,14 @@ class ITURecommendation(OnlineStandard):
 
 
 class ISOStandard(OnlineStandard):
-    pass
+    cachedir = Path('cache', 'iso')
 
 
 def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List[OnlineStandard]:
     refs = list()
     for match in rgx_itu.finditer(text):
         groups = match.groups()
-        rec = groups[1].rstrip('.')
+        rec = groups[1].rstrip('.').rstrip('-')
         yr = None
         mo = None
         rev = None
@@ -232,7 +236,7 @@ def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List
         refs.append(RFCStandard(rfcno, **context))
     for match in rgx_iso.finditer(text):
         groups = match.groups()
-        refs.append(ISOStandard(groups[2], expand_year(groups[3]), **context))
+        refs.append(ISOStandard(groups[2], None if groups[3] is None else expand_year(groups[3]), **context))
     return refs
 
 
