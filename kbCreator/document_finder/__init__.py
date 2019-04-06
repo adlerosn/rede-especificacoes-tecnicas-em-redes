@@ -23,6 +23,8 @@ rgx_itu = re.compile(r"""((?:ITU-\w)|(?:CCITT))(?: Recommendation)? (\w\.[-\d\.]
 rgx_iso = re.compile(r"""(ISO(?:\/EC)?(?:\/IEC)?(?:\/IEEE)?)(?: (TR))? ([\d+-\.]+)(?::(\d+))?""")
 rgx_rfc = re.compile(r"""(RFC) (\d+)""")
 
+rgx_itu_fix = re.compile(r"""(\w\.[-\d\.]+)(?:-)(\d{4})""")
+
 status_itu_text2code = {
     'In force': 0,
     'Superseded': 1,
@@ -216,8 +218,14 @@ class ISOStandard(OnlineStandard):
 def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List[OnlineStandard]:
     refs = list()
     for match in rgx_itu.finditer(text):
-        groups = match.groups()
-        rec = groups[1].rstrip('.').rstrip('-')
+        groups = list(match.groups())
+        rec = groups[1].rstrip('.').rstrip('-').strip()
+        fixmatch = rgx_itu_fix.match(rec)
+        if fixmatch is not None:
+            fixgroups = fixmatch.groups()
+            groups[1] = fixgroups[0]
+            groups[2] = fixgroups[1]
+            rec = groups[1].rstrip('.').rstrip('-').strip()
         yr = None
         mo = None
         rev = None
