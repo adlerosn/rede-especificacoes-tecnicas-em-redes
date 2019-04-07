@@ -106,7 +106,7 @@ class RFCStandard(OnlineStandard):
 class ITURecommendation(OnlineStandard):
     cachedir = Path('cache', 'itu')
     langorder = ('en', 'fr', 'es', 'ar', 'ru', 'ch')
-    extorder = ('pdf', 'doc', 'zip', 'doc.zip')
+    extorder = ('pdf', 'doc', 'epub', 'zip', 'doc.zip')
 
     def download_all(self) -> Dict[str, bytes]:
         d = dict()
@@ -122,6 +122,7 @@ class ITURecommendation(OnlineStandard):
                     mo, yr = "%02d" % int(brute_month), expand_year(brute_year)
                     st = str(status_itu_text2code.get(match.findAll('td')[-1].text.strip(), 3))
                     bs_pdfpage = BeautifulSoup(simpleDownloader.getUrlBytes(pdfpage))
+                    lng_prev = ''
                     for table in bs_pdfpage.findAll('table', width=True):
                         if 'Access : Freely available items' not in table.strings:
                             continue
@@ -133,6 +134,10 @@ class ITURecommendation(OnlineStandard):
                             if 'bytes' not in download_allline.findAll('td')[2].text:
                                 continue
                             lng = download_allline.findAll('td')[0].text.strip().rstrip(':').rstrip().lower()[:2]
+                            if len(lng) == 0:
+                                lng = lng_prev
+                            else:
+                                lng_prev = lng
                             dwn = download_allline.find('a', href=True)['href']
                             print(dwn)
                             type = dwn.split('!', 2)[2].split('&', 1)[0].split('-', 1)[0].lower()
@@ -142,6 +147,7 @@ class ITURecommendation(OnlineStandard):
                                 'zwd': 'doc.zip',
                                 'soft': 'zip',
                                 'zpf': 'zip',
+                                'epb': 'epub',
                             })[type]
                             d['_'.join([yr, mo, st, lng])+'.'+ext] = simpleDownloader.getUrlBytes(dwn)
         return d
@@ -219,13 +225,13 @@ def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List
     refs = list()
     for match in rgx_itu.finditer(text):
         groups = list(match.groups())
-        rec = groups[1].rstrip('.').rstrip('-').strip()
+        rec = groups[1].strip('\t\n -.,')
         fixmatch = rgx_itu_fix.match(rec)
         if fixmatch is not None:
             fixgroups = fixmatch.groups()
             groups[1] = fixgroups[0]
             groups[2] = fixgroups[1]
-            rec = groups[1].rstrip('.').rstrip('-').strip()
+            rec = groups[1].strip('\t\n -.,')
         yr = None
         mo = None
         rev = None
@@ -241,7 +247,7 @@ def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List
         refs.append(ITURecommendation(rec, rev, **context))
     for match in rgx_rfc.finditer(text):
         rfcno = match.groups()[1]
-        refs.append(RFCStandard(rfcno, **context))
+        refs.append(RFCStandard(str(int(rfcno)), **context))
     for match in rgx_iso.finditer(text):
         groups = match.groups()
         refs.append(ISOStandard(groups[2], None if groups[3] is None else expand_year(groups[3]), **context))
