@@ -96,7 +96,8 @@ class RFCStandard(OnlineStandard):
         type(self).cachedir.mkdir(parents=True, exist_ok=True)
         cached_all = type(self).cachedir.joinpath(self._identifier+'.txt')
         if not cached_all.exists():
-            cached_all.write_bytes(self.download_all()['latest'])
+            data = self.download_all()['latest']
+            cached_all.write_bytes(b'' if data is None else data)
         return {'latest': cached_all}
 
     def cached(self) -> Optional[Path]:
