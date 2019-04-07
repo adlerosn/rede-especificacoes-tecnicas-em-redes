@@ -24,5 +24,7 @@ def main():
             continue
         doc = docFF.parse()
         newReferences = referenceFinder(doc, docCchMgr.context(docPath))
-        pendingDocCchMgr = [*pendingDocCchMgr, *newReferences]
+        pendingDocCchMgr = sorted([*pendingDocCchMgr, *newReferences], key=lambda dcm: (not dcm.is_cached(), dcm.slowness(), dcm._identifier))
         print("Pending queue: %03d" % len(pendingDocCchMgr))
+        print("Uncached on queue: %03d" % len(list(filter(lambda dcm: not dcm.is_cached(), pendingDocCchMgr))))
+        print("Unique on queue: %03d" % len(set([dcm._identifier for dcm in pendingDocCchMgr])))

@@ -19,9 +19,9 @@ from ..downloader import simpleDownloader
 
 classes = dict()
 
-rgx_itu = re.compile(r"""((?:ITU-\w)|(?:CCITT))(?: Recommendation)? (\w\.[-\d\.]+)(?: \(((?:\d{2}\/)?\d{4})\))?""")
+rgx_itu = re.compile(r"""((?:ITU-\w)|(?:CCITT))(?: Recommendation)? ([A-Z]+\.[-\d\.]+)(?: \(((?:\d{2}\/)?\d{4})\))?""")
 rgx_iso = re.compile(r"""(ISO(?:\/EC)?(?:\/IEC)?(?:\/IEEE)?)(?: (TR))? ([\d+-\.]+)(?::(\d+))?""")
-rgx_rfc = re.compile(r"""(RFC) (\d+)""")
+rgx_rfc = re.compile(r"""(RFC) ([0-9]+)""")
 
 rgx_itu_fix = re.compile(r"""(\w\.[-\d\.]+)(?:-)(\d{4})""")
 
@@ -82,6 +82,8 @@ class OnlineStandard(object):
     def download_all(self) -> Dict[str, bytes]: pass
     def cached_all(self) -> Dict[str, Path]: pass
     def cached(self) -> Optional[Path]: pass
+    def is_cached(self) -> bool: return False
+    def slowness(self) -> int: return 0
     def context(self, path: Path) -> Dict[str, str]: return dict()
 
 
@@ -99,6 +101,12 @@ class RFCStandard(OnlineStandard):
             data = self.download_all()['latest']
             cached_all.write_bytes(b'' if data is None else data)
         return {'latest': cached_all}
+
+    def is_cached(self) -> bool:
+        cached_all = type(self).cachedir.joinpath(self._identifier+'.txt')
+        return cached_all.exists()
+
+    def slowness(self) -> int: return 1
 
     def cached(self) -> Optional[Path]:
         return self.cached_all().get('latest')
@@ -153,6 +161,7 @@ class ITURecommendation(OnlineStandard):
                                 'msw': 'doc',
                                 'zwd': 'doc.zip',
                                 'soft': 'zip',
+                                'soft1': 'zip',
                                 'zpf': 'zip',
                                 'epb': 'epub',
                             })[type]
@@ -220,6 +229,13 @@ class ITURecommendation(OnlineStandard):
         else:
             return all_cached['%02d_%02d_%s_%s.%s' % candidates[0]]
 
+    def is_cached(self) -> bool:
+        outdir = type(self).cachedir.joinpath(self._identifier)
+        cached_all = outdir.joinpath('complete.flag')
+        return cached_all.exists()
+
+    def slowness(self) -> int: return 9
+
     def context(self, path: Path) -> Dict[str, str]:
         return {'citing_date': '-'.join(path.name.split('_', 2)[:2])}
 
@@ -257,7 +273,12 @@ def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List
         refs.append(RFCStandard(str(int(rfcno)), **context))
     for match in rgx_iso.finditer(text):
         groups = match.groups()
-        refs.append(ISOStandard(groups[2], None if groups[3] is None else expand_year(groups[3]), **context))
+        nm = groups[2]
+        yr = None if groups[3] is None else expand_year(groups[3])
+        nm = nm.strip('\t\n -.,')
+        if len(nm) == 0:
+            continue
+        refs.append(ISOStandard(nm, yr, **context))
     return refs
 
 
