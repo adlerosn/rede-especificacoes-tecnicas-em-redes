@@ -117,10 +117,16 @@ class ITURecommendation(OnlineStandard):
         for match in bs_documents.select('tr'):
             if match.find('a', href=True) is not None and match.find('table') is None:
                 if match.find('a')['href'].startswith('./recommendation.asp?lang=en'):
-                    pdfpage = f"https://www.itu.int/rec/T-REC-{self._identifier}/{match.find('a')['href'][2:]}"
+                    pdflinkrel = match.find('a')['href'][2:]
+                    pdfpage = f"https://www.itu.int/rec/T-REC-{self._identifier}/{pdflinkrel}"
                     brute_year = match.find('a').text.strip().split('(', 1)[-1].split(')', 1)[0].split('/')[-1]
                     brute_month = match.find('a').text.strip().split('(', 1)[-1].split(')', 1)[0].split('/')[0]
-                    mo, yr = "%02d" % int(brute_month), expand_year(brute_year)
+                    mo, yr = None, None
+                    try:
+                        mo, yr = "%02d" % int(brute_month), expand_year(brute_year)
+                    except ValueError:
+                        dts = pdflinkrel.split('-')[-2]
+                        mo, yr = dts[4:6], dts[0:4]
                     st = str(status_itu_text2code.get(match.findAll('td')[-1].text.strip(), 3))
                     bs_pdfpage = BeautifulSoup(simpleDownloader.getUrlBytes(pdfpage))
                     lng_prev = ''
