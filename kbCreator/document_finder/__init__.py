@@ -121,7 +121,10 @@ class ITURecommendation(OnlineStandard):
         d = dict()
         simpleDownloader.cleanCookies()
         print(f"https://www.itu.int/rec/T-REC-{self._identifier}/en")
-        bs_documents = BeautifulSoup(simpleDownloader.getUrlBytes(f"https://www.itu.int/rec/T-REC-{self._identifier}/en"))
+        bt_documents = simpleDownloader.getUrlBytes(f"https://www.itu.int/rec/T-REC-{self._identifier}/en")
+        if bt_documents is None:
+            return d
+        bs_documents = BeautifulSoup(bt_documents)
         for match in bs_documents.select('tr'):
             if match.find('a', href=True) is not None and match.find('table') is None:
                 if match.find('a')['href'].startswith('./recommendation.asp?lang=en'):
@@ -255,6 +258,8 @@ def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List
             groups[1] = fixgroups[0]
             groups[2] = fixgroups[1]
             rec = groups[1].strip('\t\n -.,')
+        if '..' in rec or '--' in rec or '.-' in rec or '-.' in rec:
+            continue
         yr = None
         mo = None
         rev = None
