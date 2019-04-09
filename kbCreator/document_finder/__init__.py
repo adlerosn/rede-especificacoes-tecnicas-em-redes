@@ -85,6 +85,8 @@ class OnlineStandard(object):
     def is_cached(self) -> bool: return False
     def slowness(self) -> int: return 0
     def context(self, path: Path) -> Dict[str, str]: return dict()
+    def is_in_force(self, path: Optional[Path] = None) -> bool: return False
+    def publication_date(self, path: Optional[Path] = None) -> Optional[str]: return None
 
 
 class RFCStandard(OnlineStandard):
@@ -241,6 +243,16 @@ class ITURecommendation(OnlineStandard):
 
     def context(self, path: Path) -> Dict[str, str]:
         return {'citing_date': '-'.join(path.name.split('_', 2)[:2])}
+
+    def is_in_force(self, path: Optional[Path] = None) -> bool:
+        if path is not None:
+            return path.name.split('_')[2] == '0'
+        return False
+
+    def publication_date(self, path: Optional[Path] = None) -> Optional[str]:
+        if path is not None:
+            return '-'.join(path.name.split('_', 2)[:2])
+        return None
 
 
 class ISOStandard(OnlineStandard):

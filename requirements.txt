@@ -1,2 +1,3 @@
 BeautifulSoup4
 html5lib
+graphviz
