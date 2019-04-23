@@ -11,8 +11,8 @@ from .document_finder import classes as docClasses
 from .document_finder import find_references as referenceFinder
 
 
-def generate_graph():
-    rootsrc, rootname = Path("rootdoc.txt").read_text().splitlines()
+def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_context=True):
+    rootsrc, rootname = Path(rootdoc).read_text().splitlines()
     analyzedDocPaths = list()
     pendingDocCchMgr = [docClasses[rootsrc](rootname)]
     graph = dict()
@@ -25,6 +25,7 @@ def generate_graph():
         if currName not in graph:
             graph[currName] = {
                 'name': currName,
+                'generic_name': str(docCchMgr),
                 'type': docCchMgr.__class__.__name__,
                 'doc_id': docCchMgr._identifier,
                 'monitored': False if docPath is None else docPath.exists(),
@@ -41,6 +42,8 @@ def generate_graph():
             continue
         doc = docFF.parse()
         newReferences = referenceFinder(doc, docCchMgr.context(docPath))
+        if not keep_temporal_context:
+            newReferences = list(map(lambda a: a.whithout_temporal_context(), newReferences))
         for newReference in newReferences:
             newDocPath = newReference.cached()
             newName = f"{newReference.__class__.__name__}: {newReference._identifier}"
@@ -51,17 +54,23 @@ def generate_graph():
             [*pendingDocCchMgr, *newReferences],
             key=lambda dcm: (not dcm.is_cached(), dcm.slowness(), dcm._identifier)
         )
-    Path('graph.json').write_text(json.dumps(graph))
+    Path(grapfn).write_text(json.dumps(graph))
 
 
-def main():
-    if not Path('graph.json').exists():
-        generate_graph()
-    graph = json.loads(Path('graph.json').read_text())
+def embed_connectivity(graph):
+    return graph
+
+
+def convert_outputs(prefix, temporal_context):
+    if not Path(f'{prefix}.json').exists():
+        generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
+    graph = json.loads(Path(f'{prefix}.json').read_text())
+    if not Path(f'{prefix}_metrics.json').exists():
+        Path(f'{prefix}_metrics.json').write_text(json.dumps(embed_connectivity(graph)))
     # to_sqlite
-    if Path('graph.db').exists():
-        Path('graph.db').unlink()
-    sqldb = sqlite3.connect('graph.db')
+    if Path(f'{prefix}.db').exists():
+        Path(f'{prefix}.db').unlink()
+    sqldb = sqlite3.connect(f'{prefix}.db')
     cur = sqldb.cursor()
     cur.execute('''CREATE TABLE node (
         name VARCHAR(255),
@@ -76,6 +85,18 @@ def main():
         mentions INTEGER,
         FOREIGN KEY(node_src) REFERENCES node(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
         FOREIGN KEY(node_dst) REFERENCES node(rowid) ON UPDATE CASCADE ON DELETE CASCADE)''')
+    cur.execute('''CREATE VIEW nodes AS
+        SELECT
+            rowid as id,
+            name as label
+        FROM node''')
+    cur.execute('''CREATE VIEW edges AS
+        SELECT
+            rowid as id,
+            node_src as source,
+            node_dst as target,
+            mentions as weight
+        FROM edge''')
     node_name_to_id = dict()
     for node in graph.values():
         cur.execute(
@@ -94,8 +115,15 @@ def main():
             )
     cur.close()
     sqldb.commit()
-    Path('graph.sql').write_text('\n'.join(sqldb.iterdump()))
+    Path(f'{prefix}.sql').write_text('\n'.join(sqldb.iterdump()))
     sqldb.close()
+    # to_csv
+    with open(f'{prefix}.csv', 'w') as file:
+        file.write('%s,%s,%s\n' % ("source", "target", "weight"))
+        for node in graph.values():
+            node_src_nm = node['name']
+            for node_dst_nm, frequency in node['mention_freq'].items():
+                file.write('%s,%s,%d\n' % (node_src_nm, node_dst_nm, frequency))
     # to_graphviz
     gv = graphviz.Digraph()
     for node in graph.values():
@@ -112,4 +140,9 @@ def main():
         for node_dst_nm, frequency in node['mention_freq'].items():
             node_dst = node_name_to_id[node_dst_nm]
             gv.edge(str(node_src), str(node_dst), str(frequency))
-    gv.save('graph.gv')  # takes "forever" to render, "never" finishes
+    gv.save(f'{prefix}.gv')  # takes "forever" to render, "never" finishes
+
+
+def main():
+    convert_outputs('graph', True)
+    convert_outputs('graph_noctx', False)

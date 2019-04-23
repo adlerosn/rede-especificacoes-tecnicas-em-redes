@@ -1,5 +1,5 @@
 all: virtualenv
-	. virtualenv/bin/activate ; python3 -m kbCreator
+	. virtualenv/bin/activate ; python3 -m docRefNetCreator
 
 depends: virtualenv
 	. virtualenv/bin/activate ; pip install -r requirements.txt

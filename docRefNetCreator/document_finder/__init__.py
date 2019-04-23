@@ -87,6 +87,8 @@ class OnlineStandard(object):
     def context(self, path: Path) -> Dict[str, str]: return dict()
     def is_in_force(self, path: Optional[Path] = None) -> bool: return False
     def publication_date(self, path: Optional[Path] = None) -> Optional[str]: return None
+    def whithout_temporal_context(self): return type(self)(self._identifier)
+    def __str__(self): return f"{self.__class__.__name__}: {self._identifier}"
 
 
 class RFCStandard(OnlineStandard):
@@ -112,6 +114,8 @@ class RFCStandard(OnlineStandard):
 
     def cached(self) -> Optional[Path]:
         return self.cached_all().get('latest')
+
+    def __str__(self): return f"RFC {self._identifier}"
 
 
 class ITURecommendation(OnlineStandard):
@@ -254,9 +258,12 @@ class ITURecommendation(OnlineStandard):
             return '-'.join(path.name.split('_', 2)[:2])
         return None
 
+    def __str__(self): return f"ITU {self._identifier}"
+
 
 class ISOStandard(OnlineStandard):
     cachedir = Path('cache', 'iso')
+    def __str__(self): return f"ISO {self._identifier}"
 
 
 def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List[OnlineStandard]:

@@ -50042,4 +50042,16 @@ INSERT INTO "node" VALUES('ISOStandard: 9945-3','ISOStandard','9945-3',0,NULL,0)
 INSERT INTO "node" VALUES('ISOStandard: 99594-2','ISOStandard','99594-2',0,NULL,0);
 INSERT INTO "node" VALUES('ISOStandard: 9979','ISOStandard','9979',0,NULL,0);
 INSERT INTO "node" VALUES('ISOStandard: 9999','ISOStandard','9999',0,NULL,0);
+CREATE VIEW nodes AS
+        SELECT
+            rowid as id,
+            name as label
+        FROM node;
+CREATE VIEW edges AS
+        SELECT
+            rowid as id,
+            node_src as source,
+            node_dst as target,
+            mentions as weight
+        FROM edge;
 COMMIT;
