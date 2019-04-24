@@ -74,6 +74,7 @@ def convert_outputs(prefix, temporal_context):
     cur = sqldb.cursor()
     cur.execute('''CREATE TABLE node (
         name VARCHAR(255),
+        generic_name VARCHAR(255),
         type VARCHAR(255),
         doc_id VARCHAR(255),
         monitored bool,
@@ -85,10 +86,10 @@ def convert_outputs(prefix, temporal_context):
         mentions INTEGER,
         FOREIGN KEY(node_src) REFERENCES node(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
         FOREIGN KEY(node_dst) REFERENCES node(rowid) ON UPDATE CASCADE ON DELETE CASCADE)''')
-    cur.execute('''CREATE VIEW nodes AS
+    cur.execute(f'''CREATE VIEW nodes AS
         SELECT
             rowid as id,
-            name as label
+            {'name' if temporal_context else 'generic_name'} as label
         FROM node''')
     cur.execute('''CREATE VIEW edges AS
         SELECT
@@ -100,8 +101,24 @@ def convert_outputs(prefix, temporal_context):
     node_name_to_id = dict()
     for node in graph.values():
         cur.execute(
-            '''INSERT INTO node(name,type,doc_id,monitored,pub_date,in_force) VALUES(?,?,?,?,?,?)''',
-            (node['name'], node['type'], node['doc_id'], node['monitored'], node['pub_date'], node['in_force'])
+            '''INSERT INTO node(
+                name,
+                generic_name,
+                type,
+                doc_id,
+                monitored,
+                pub_date,
+                in_force
+            ) VALUES(?,?,?,?,?,?,?)''',
+            (
+                node['name'],
+                node['generic_name'],
+                node['type'],
+                node['doc_id'],
+                node['monitored'],
+                node['pub_date'],
+                node['in_force']
+            )
         )
         node_name_to_id[node['name']] = cur.lastrowid
     for node in graph.values():
@@ -123,7 +140,11 @@ def convert_outputs(prefix, temporal_context):
         for node in graph.values():
             node_src_nm = node['name']
             for node_dst_nm, frequency in node['mention_freq'].items():
-                file.write('%s,%s,%d\n' % (node_src_nm, node_dst_nm, frequency))
+                file.write('%s,%s,%d\n' % (
+                    graph[node_src_nm]['name' if temporal_context else 'generic_name'],
+                    graph[node_dst_nm]['name' if temporal_context else 'generic_name'],
+                    frequency
+                ))
     # to_graphviz
     gv = graphviz.Digraph()
     for node in graph.values():
