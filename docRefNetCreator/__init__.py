@@ -31,6 +31,7 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
                 'monitored': False if docPath is None else docPath.exists(),
                 'pub_date': docCchMgr.publication_date(docPath),
                 'in_force': docCchMgr.is_in_force(docPath),
+                'filepath': str(docPath),
                 'mention_freq': dict(),
             }
         if docPath in analyzedDocPaths:
@@ -40,7 +41,7 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
         print(f"Document @ {currName}")
         if docFF is None:
             continue
-        doc = docFF.parse()
+        doc = docFF.parsed_from_cache(str(docPath)[6:])
         newReferences = referenceFinder(doc, docCchMgr.context(docPath))
         if not keep_temporal_context:
             newReferences = list(map(lambda a: a.whithout_temporal_context(), newReferences))

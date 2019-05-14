@@ -1,6 +1,8 @@
 /*.nlp*
 /cache/**
 /cache
+/plaincache/**
+/plaincache
 /corpus/**
 /corpus
 /virtualenv/**

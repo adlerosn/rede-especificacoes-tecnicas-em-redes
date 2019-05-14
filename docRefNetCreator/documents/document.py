@@ -2,6 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 from os import linesep as eol
+from pathlib import Path
+import json
 import re
 
 toc_line_regex = re.compile(r'.+(\s*?[\.]){6,}\s*\d+')
@@ -195,9 +197,23 @@ class Document(object):
         del ignorable_header
         del ignorable_footer
         del cleaned_pages
-        joined_pages = cst_eol.join(fix_paragraphs(eol.join(map(lambda a: eol.join(a[0]), textual_part[0])).splitlines()))
-        return joined_pages
+        joined_paragraphs = fix_paragraphs(eol.join(map(lambda a: eol.join(a[0]), textual_part[0])).splitlines())
+        if cst_eol is None:
+            return joined_paragraphs
+        else:
+            return cst_eol.join(joined_paragraphs)
         # for part in textual_part:
         #     print(part)
         # print(cleaned_page_contents)
         # print(sample_pages)
+
+    def parsed_from_cache(self, cachekey: str, cst_eol: str = eol):
+        cached = None
+        cached_disk = Path('plaincache', cachekey)
+        if cached_disk.exists():
+            cached = json.loads(cached_disk.read_text())
+        else:
+            cached = self.parse(None)
+            cached_disk.parent.mkdir(parents=True, exist_ok=True)
+            cached_disk.write_text(json.dumps(cached))
+        return cst_eol.join(cached)
