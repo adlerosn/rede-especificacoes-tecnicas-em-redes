@@ -211,12 +211,13 @@ class ITURecommendation(OnlineStandard):
                 ]
             ],
             key=lambda a: (
-                len(a[4]),
+                bool(len(a[4])),
                 type(self).extorder.index(a[5]),
                 type(self).langorder.index(a[3]),
                 -a[0],
                 -a[1],
                 int(a[2]),
+                len(a[4]),
             )
         )
         done = False

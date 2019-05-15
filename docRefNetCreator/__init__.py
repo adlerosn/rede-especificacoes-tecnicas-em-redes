@@ -10,6 +10,8 @@ from .documents import fromFile as DocumentFromFile
 from .document_finder import classes as docClasses
 from .document_finder import find_references as referenceFinder
 
+INFINITY = float('inf')
+
 
 def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_context=True):
     rootsrc, rootname = Path(rootdoc).read_text().splitlines()
@@ -58,16 +60,93 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
     Path(grapfn).write_text(json.dumps(graph))
 
 
-def embed_connectivity(graph):
-    return graph
+def dijkstra_min_path(graph, initial, target, edge_weight_getter):
+    visited = {initial: 0}
+    path = dict()
+
+    nodes = set(graph.keys())
+
+    while len(nodes) > 0:
+        min_node = None
+        for node in nodes:
+            if node in visited:
+                if min_node is None:
+                    min_node = node
+                elif visited[node] < visited[min_node]:
+                    min_node = node
+
+        if min_node is None:
+            break
+
+        nodes.remove(min_node)
+        current_weight = visited[min_node]
+
+        if min_node == target:
+            min_path = list()
+            current = target
+            if current in path or current == initial:
+                while current is not None:
+                    min_path.append(current)
+                    current = path.get(current)
+                return list(reversed(min_path))
+            else:
+                return None
+        for edge, possible_weight in graph[min_node]['mention_freq'].items():
+            weight = current_weight + edge_weight_getter(possible_weight)
+            if edge not in visited or weight < visited[edge]:
+                visited[edge] = weight
+                path[edge] = min_node
+    return None
+
+
+def embed_metrics(graph):
+    metrics = dict()
+    metrics['basic'] = dict()
+    metrics['basic']['node_count'] = len(graph)
+    metrics['basic']['vertex_count'] = 0
+    metrics['basic']['vertex_weight_sum'] = 0
+    for node in graph.values():
+        metrics['basic']['vertex_count'] += len(node['mention_freq'])
+        metrics['basic']['vertex_weight_sum'] += sum(node['mention_freq'].values())
+    matrix_labels = list(graph.keys())
+    metrics['matrix_labels'] = matrix_labels
+    metrics['degree'] = dict()
+    for key, node in graph.items():
+        metric = dict()
+        metric['degree_out'] = len(node['mention_freq'].values())
+        metric['weight_out'] = sum(node['mention_freq'].values())
+        metric['degree_in'] = 0
+        metric['weight_in'] = 0
+        for node2 in graph.values():
+            count = node2['mention_freq'].get(key, 0)
+            if count > 0:
+                metric['degree_in'] += 1
+                metric['weight_in'] += count
+        metrics['degree'][key] = metric
+    metrics['distance_matrix_hops'] = [
+        [
+            dijkstra_min_path(graph, initial, target, lambda a: 1)
+            for target in matrix_labels
+        ]
+        for initial in matrix_labels
+    ]
+    metrics['distance_matrix_weight'] = [
+        [
+            dijkstra_min_path(graph, initial, target, lambda a: a)
+            for target in matrix_labels
+        ]
+        for initial in matrix_labels
+    ]
+    return metrics
 
 
 def convert_outputs(prefix, temporal_context):
     if not Path(f'{prefix}.json').exists():
         generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
     graph = json.loads(Path(f'{prefix}.json').read_text())
-    if not Path(f'{prefix}_metrics.json').exists():
-        Path(f'{prefix}_metrics.json').write_text(json.dumps(embed_connectivity(graph)))
+    if not Path(f'{prefix}_metrics.json').exists() or True:
+        Path(f'{prefix}_metrics.json').write_text(json.dumps(embed_metrics(graph), indent=2))
+    metrics = json.loads(Path(f'{prefix}_metrics.json').read_text())
     # to_sqlite
     if Path(f'{prefix}.db').exists():
         Path(f'{prefix}.db').unlink()
