@@ -4,6 +4,7 @@
 import json
 import sqlite3
 import graphviz
+import multiprocessing
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 
@@ -126,7 +127,7 @@ def embed_metrics(graph):
                 metric['degree_in'] += 1
                 metric['weight_in'] += count
         metrics['degree'][key] = metric
-    tpe = ProcessPoolExecutor(128)
+    tpe = ProcessPoolExecutor(multiprocessing.cpu_count())
     print("Slow Dijkstra: Hops")
     metrics['dijkstra_hops'] = [
         tpe.submit(dijkstra, graph, initial, True)
