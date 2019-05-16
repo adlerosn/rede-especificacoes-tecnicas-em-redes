@@ -60,7 +60,7 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
     Path(grapfn).write_text(json.dumps(graph))
 
 
-def dijkstra_min_path(graph, initial, target, edge_weight_getter):
+def dijkstra(graph, initial, edge_weight_getter):
     visited = {initial: 0}
     path = dict()
 
@@ -81,22 +81,24 @@ def dijkstra_min_path(graph, initial, target, edge_weight_getter):
         nodes.remove(min_node)
         current_weight = visited[min_node]
 
-        if min_node == target:
-            min_path = list()
-            current = target
-            if current in path or current == initial:
-                while current is not None:
-                    min_path.append(current)
-                    current = path.get(current)
-                return list(reversed(min_path))
-            else:
-                return None
         for edge, possible_weight in graph[min_node]['mention_freq'].items():
             weight = current_weight + edge_weight_getter(possible_weight)
             if edge not in visited or weight < visited[edge]:
                 visited[edge] = weight
                 path[edge] = min_node
-    return None
+    return visited, path
+
+
+def dijkstra_min_path(dijkstra_tuple, initial, target):
+    visited, path = dijkstra_tuple
+    min_path = list()
+    current = target
+    if current in path or current == initial:
+        while current is not None:
+            min_path.append(current)
+            current = path.get(current)
+        return (list(reversed(min_path)), visited[target])
+    return ([], None)
 
 
 def embed_metrics(graph):
@@ -123,20 +125,24 @@ def embed_metrics(graph):
                 metric['degree_in'] += 1
                 metric['weight_in'] += count
         metrics['degree'][key] = metric
-    metrics['distance_matrix_hops'] = [
-        [
-            dijkstra_min_path(graph, initial, target, lambda a: 1)
-            for target in matrix_labels
-        ]
+    print("Slow Dijkstra: Hops")
+    metrics['dijkstra_hops'] = [
+        dijkstra(graph, initial, lambda a: 1)
         for initial in matrix_labels
     ]
-    metrics['distance_matrix_weight'] = [
-        [
-            dijkstra_min_path(graph, initial, target, lambda a: a)
-            for target in matrix_labels
-        ]
+    print("Slow Dijkstra: Weight")
+    metrics['dijkstra_weight'] = [
+        dijkstra(graph, initial, lambda a: a)
         for initial in matrix_labels
     ]
+    metrics['distance_matrix_hops'] = [[
+        metrics['dijkstra_hops'][pos][1].get(target, None)
+        for target in matrix_labels
+    ] for pos, initial in enumerate(matrix_labels)]
+    metrics['distance_matrix_weight'] = [[
+        metrics['dijkstra_weight'][pos][1].get(target, None)
+        for target in matrix_labels
+    ] for pos, initial in enumerate(matrix_labels)]
     return metrics
 
 
