@@ -5,6 +5,7 @@ import json
 import sqlite3
 import graphviz
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor
 
 from .documents import fromFile as DocumentFromFile
 from .document_finder import classes as docClasses
@@ -60,7 +61,7 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
     Path(grapfn).write_text(json.dumps(graph))
 
 
-def dijkstra(graph, initial, edge_weight_getter):
+def dijkstra(graph, initial, hops_mode=False):
     visited = {initial: 0}
     path = dict()
 
@@ -82,7 +83,7 @@ def dijkstra(graph, initial, edge_weight_getter):
         current_weight = visited[min_node]
 
         for edge, possible_weight in graph[min_node]['mention_freq'].items():
-            weight = current_weight + edge_weight_getter(possible_weight)
+            weight = current_weight + (1 if hops_mode else possible_weight)
             if edge not in visited or weight < visited[edge]:
                 visited[edge] = weight
                 path[edge] = min_node
@@ -125,16 +126,21 @@ def embed_metrics(graph):
                 metric['degree_in'] += 1
                 metric['weight_in'] += count
         metrics['degree'][key] = metric
+    tpe = ProcessPoolExecutor(128)
     print("Slow Dijkstra: Hops")
     metrics['dijkstra_hops'] = [
-        dijkstra(graph, initial, lambda a: 1)
+        tpe.submit(dijkstra, graph, initial, True)
         for initial in matrix_labels
     ]
+    metrics['dijkstra_hops'] = list(map(lambda future: future.result(), metrics['dijkstra_hops']))
     print("Slow Dijkstra: Weight")
     metrics['dijkstra_weight'] = [
-        dijkstra(graph, initial, lambda a: a)
+        tpe.submit(dijkstra, graph, initial, False)
         for initial in matrix_labels
     ]
+    metrics['dijkstra_weight'] = list(map(lambda future: future.result(), metrics['dijkstra_weight']))
+    tpe.shutdown()
+    del tpe
     metrics['distance_matrix_hops'] = [[
         metrics['dijkstra_hops'][pos][1].get(target, None)
         for target in matrix_labels
