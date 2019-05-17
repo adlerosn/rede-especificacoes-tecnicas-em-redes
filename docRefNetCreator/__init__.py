@@ -6,6 +6,7 @@ import sqlite3
 import graphviz
 import multiprocessing
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor
 
 from .documents import fromFile as DocumentFromFile
@@ -67,6 +68,7 @@ def dijkstra(graph, initial, hops_mode=False):
     path = dict()
 
     nodes = set(graph.keys())
+    mentions = {node: list(graph[node]['mention_freq'].items()) for node in nodes}
 
     while len(nodes) > 0:
         min_node = None
@@ -83,12 +85,21 @@ def dijkstra(graph, initial, hops_mode=False):
         nodes.remove(min_node)
         current_weight = visited[min_node]
 
-        for edge, possible_weight in graph[min_node]['mention_freq'].items():
+        for edge, possible_weight in mentions[min_node]:
             weight = current_weight + (1 if hops_mode else possible_weight)
             if edge not in visited or weight < visited[edge]:
                 visited[edge] = weight
                 path[edge] = min_node
     return visited, path
+
+
+class Dijkstra:
+    def __init__(self, graph, hops_mode=False):
+        self._graph = graph
+        self._hops_mode = hops_mode
+
+    def __call__(self, initial):
+        return dijkstra(self._graph, initial, self._hops_mode)
 
 
 def dijkstra_min_path(dijkstra_tuple, initial, target):
@@ -112,8 +123,7 @@ def embed_metrics(graph):
     for node in graph.values():
         metrics['basic']['vertex_count'] += len(node['mention_freq'])
         metrics['basic']['vertex_weight_sum'] += sum(node['mention_freq'].values())
-    matrix_labels = list(graph.keys())
-    metrics['matrix_labels'] = matrix_labels
+    metrics['matrix_labels'] = list(graph.keys())
     metrics['degree'] = dict()
     for key, node in graph.items():
         metric = dict()
@@ -127,30 +137,33 @@ def embed_metrics(graph):
                 metric['degree_in'] += 1
                 metric['weight_in'] += count
         metrics['degree'][key] = metric
+    return metrics
+
+
+def embed_metrics_distance(graph, metrics):
+    distance = dict()
+    matrix_labels = metrics['matrix_labels']
     tpe = ProcessPoolExecutor(multiprocessing.cpu_count())
     print("Slow Dijkstra: Hops")
-    metrics['dijkstra_hops'] = [
-        tpe.submit(dijkstra, graph, initial, True)
-        for initial in matrix_labels
-    ]
-    metrics['dijkstra_hops'] = list(map(lambda future: future.result(), metrics['dijkstra_hops']))
+    dj = Dijkstra(graph, True)
+    dijkstra = list(tpe.map(dj, matrix_labels))
+    distance['distance_matrix_hops'] = [[
+        dijkstra[pos][0].get(target, -1)
+        for target in matrix_labels
+    ] for pos, initial in enumerate(matrix_labels)]
+    del dijkstra
+    del dj
     print("Slow Dijkstra: Weight")
-    metrics['dijkstra_weight'] = [
-        tpe.submit(dijkstra, graph, initial, False)
-        for initial in matrix_labels
-    ]
-    metrics['dijkstra_weight'] = list(map(lambda future: future.result(), metrics['dijkstra_weight']))
+    dj = Dijkstra(graph, False)
+    dijkstra = list(tpe.map(dj, matrix_labels))
+    distance['distance_matrix_weight'] = [[
+        dijkstra[pos][0].get(target, -1)
+        for target in matrix_labels
+    ] for pos, initial in enumerate(matrix_labels)]
+    del dijkstra
+    del dj
     tpe.shutdown()
-    del tpe
-    metrics['distance_matrix_hops'] = [[
-        metrics['dijkstra_hops'][pos][1].get(target, None)
-        for target in matrix_labels
-    ] for pos, initial in enumerate(matrix_labels)]
-    metrics['distance_matrix_weight'] = [[
-        metrics['dijkstra_weight'][pos][1].get(target, None)
-        for target in matrix_labels
-    ] for pos, initial in enumerate(matrix_labels)]
-    return metrics
+    return distance
 
 
 def convert_outputs(prefix, temporal_context):
@@ -160,6 +173,8 @@ def convert_outputs(prefix, temporal_context):
     if not Path(f'{prefix}_metrics.json').exists() or True:
         Path(f'{prefix}_metrics.json').write_text(json.dumps(embed_metrics(graph), indent=2))
     metrics = json.loads(Path(f'{prefix}_metrics.json').read_text())
+    if not Path(f'{prefix}_metrics_distances.json').exists():
+        Path(f'{prefix}_metrics_distances.json').write_text(json.dumps(embed_metrics_distance(graph, metrics)))
     # to_sqlite
     if Path(f'{prefix}.db').exists():
         Path(f'{prefix}.db').unlink()
