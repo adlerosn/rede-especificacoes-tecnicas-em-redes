@@ -167,6 +167,15 @@ def embed_metrics_distance(graph, metrics):
     return distance
 
 
+def embed_metrics_connectivity(graph, metrics, g, namefield):
+    connectivity = dict()
+    print('connectivity_edge')
+    connectivity['connectivity_edge'] = networkx.edge_connectivity(g)
+    print('connectivity_node')
+    connectivity['connectivity_node'] = networkx.node_connectivity(g)
+    return connectivity
+
+
 def convert_outputs(prefix, temporal_context):
     if not Path(f'{prefix}.json').exists():
         generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
@@ -288,17 +297,24 @@ def convert_outputs(prefix, temporal_context):
             node_dst = node_name_to_id[node_dst_nm]
             gv.edge(str(node_src), str(node_dst), str(frequency))
     gv.save(f'{prefix}.gv')  # takes "forever" to render, "never" finishes
-    # matplotlib rendering
+    # connectivity
     g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
-    networkx.draw(g)
-    plt.savefig(f'{prefix}_unweighted.pdf')
-    plt.savefig(f'{prefix}_unweighted.png')
-    plt.close()
-    g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_weighted.graphml'))
-    networkx.draw(g)
-    plt.savefig(f'{prefix}_weighted.pdf')
-    plt.savefig(f'{prefix}_weighted.png')
-    plt.close()
+    if not Path(f'{prefix}_metrics_connectivity.json').exists():
+        Path(f'{prefix}_metrics_connectivity.json').write_text(json.dumps(
+            embed_metrics_connectivity(graph, metrics, g, 'name' if temporal_context else 'generic_name'), indent=2))
+    # matplotlib rendering
+    if not Path(f'{prefix}_unweighted.pdf').exists() or not Path(f'{prefix}_unweighted.png').exists():
+        g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
+        networkx.draw(g)
+        plt.savefig(f'{prefix}_unweighted.pdf')
+        plt.savefig(f'{prefix}_unweighted.png')
+        plt.close()
+    if not Path(f'{prefix}_weighted.pdf').exists() or not Path(f'{prefix}_weighted.png').exists():
+        g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_weighted.graphml'))
+        networkx.draw(g)
+        plt.savefig(f'{prefix}_weighted.pdf')
+        plt.savefig(f'{prefix}_weighted.png')
+        plt.close()
 
 
 def main():
