@@ -3,10 +3,11 @@
 
 import json
 import sqlite3
+import networkx
 import graphviz
 import multiprocessing
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+import matplotlib.pyplot as plt
 from concurrent.futures import ProcessPoolExecutor
 
 from .documents import fromFile as DocumentFromFile
@@ -170,11 +171,28 @@ def convert_outputs(prefix, temporal_context):
     if not Path(f'{prefix}.json').exists():
         generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
     graph = json.loads(Path(f'{prefix}.json').read_text())
-    if not Path(f'{prefix}_metrics.json').exists() or True:
+    if not Path(f'{prefix}_metrics.json').exists():
         Path(f'{prefix}_metrics.json').write_text(json.dumps(embed_metrics(graph), indent=2))
     metrics = json.loads(Path(f'{prefix}_metrics.json').read_text())
     if not Path(f'{prefix}_metrics_distances.json').exists():
         Path(f'{prefix}_metrics_distances.json').write_text(json.dumps(embed_metrics_distance(graph, metrics)))
+    # to_networkx
+    g = networkx.DiGraph()
+    g.add_nodes_from(list(graph.keys()) if temporal_context else [node['generic_name'] for node in graph.values()])
+    g.add_edges_from([
+        ((node_source['name'], target) if temporal_context else (node_source['generic_name'], graph[target]['generic_name']))
+        for node_source in graph.values()
+        for target in node_source['mention_freq'].keys()
+    ])
+    networkx.write_graphml(g, f'{prefix}_unweighted.graphml')
+    for src in graph.values():
+        srcnm = src['name' if temporal_context else 'generic_name']
+        for tgt, w in src['mention_freq'].items():
+            tgtnm = graph[tgt]['name' if temporal_context else 'generic_name']
+            g[srcnm][tgtnm]['weight'] = w
+    networkx.write_graphml(g, f'{prefix}_weighted.graphml')
+    g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
+    g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_weighted.graphml'))
     # to_sqlite
     if Path(f'{prefix}.db').exists():
         Path(f'{prefix}.db').unlink()
@@ -270,6 +288,17 @@ def convert_outputs(prefix, temporal_context):
             node_dst = node_name_to_id[node_dst_nm]
             gv.edge(str(node_src), str(node_dst), str(frequency))
     gv.save(f'{prefix}.gv')  # takes "forever" to render, "never" finishes
+    # matplotlib rendering
+    g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
+    networkx.draw(g)
+    plt.savefig(f'{prefix}_unweighted.pdf')
+    plt.savefig(f'{prefix}_unweighted.png')
+    plt.close()
+    g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_weighted.graphml'))
+    networkx.draw(g)
+    plt.savefig(f'{prefix}_weighted.pdf')
+    plt.savefig(f'{prefix}_weighted.png')
+    plt.close()
 
 
 def main():

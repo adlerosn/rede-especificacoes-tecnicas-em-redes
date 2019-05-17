@@ -1,3 +1,5 @@
 BeautifulSoup4
 html5lib
 graphviz
+networkx
+matplotlib
