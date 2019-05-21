@@ -15,6 +15,24 @@ from .document_finder import classes as docClasses
 from .document_finder import find_references as referenceFinder
 
 INFINITY = float('inf')
+EMPTY_ITER = iter(list())
+
+
+def find_rootdoc(rootdoc='rootdoc.txt'):
+    rootsrc, rootname = Path(rootdoc).read_text().splitlines()
+    docCchMgr = docClasses[rootsrc](rootname)
+    docPath = docCchMgr.cached()
+    currName = f"{docCchMgr.__class__.__name__}: {docCchMgr._identifier}"
+    if docPath is not None:
+        currName = str(docPath)[6:]
+    return {
+        'name': currName,
+        'generic_name': str(docCchMgr),
+        'type': docCchMgr.__class__.__name__,
+        'doc_id': docCchMgr._identifier,
+        'filepath': str(docPath),
+        'object': docCchMgr,
+    }
 
 
 def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_context=True):
@@ -176,6 +194,85 @@ def embed_metrics_connectivity(graph, metrics, g, namefield):
     return connectivity
 
 
+def get_transition_map(graph):
+    transitions = [(source, target) for source, nd in graph.items() for target in nd['mention_freq'].keys()]
+    transmap = dict()
+    for s, t in transitions:
+        if t not in transmap:
+            transmap[t] = list()
+        transmap[t].append(s)
+    return transmap
+
+
+def find_all_paths(tm, initial, target, accumulator=None):
+    if accumulator is None:
+        accumulator = list()
+    accumulator = [*accumulator, initial]
+    if initial == target:
+        yield accumulator
+    else:
+        for intermediate in tm[initial]:
+            if intermediate not in accumulator:
+                yield from find_all_paths(tm, intermediate, target, accumulator)
+        yield from EMPTY_ITER
+
+
+def find_all_loopy_paths(graph, node):
+    tm = get_transition_map(graph)
+    accumulator = [node]
+    for intermediate in tm[node]:
+        yield from find_all_paths(tm, intermediate, node, accumulator)
+    yield from EMPTY_ITER
+
+
+def get_reverse_transition_map(graph, sequential):
+    transitions = [
+        (sequential.index(source), sequential.index(target))
+        for source, nd in graph.items() for target in nd['mention_freq'].keys()
+    ]
+    revtransmap = [list() for _ in sequential]
+    for s, t in transitions:
+        revtransmap[t].append(s)
+    return tuple([tuple(i) for i in revtransmap])
+
+
+def find_all_loopy_paths_reversedly(graph, node, sequential):
+    revtransmap = get_reverse_transition_map(graph, sequential)
+    accumulator = [sequential.index(node)]
+    for intermediate in revtransmap[accumulator[0]]:
+        yield from find_all_paths_reversedly(revtransmap, intermediate, accumulator[0], accumulator)
+    yield from EMPTY_ITER
+
+
+def find_all_paths_reversedly(revtransmap, initial, target, accumulator=None):
+    if accumulator is None:
+        accumulator = list()
+    accumulator = [initial, *accumulator]
+    if initial == target:
+        yield accumulator
+    else:
+        for intermediate in revtransmap[initial]:
+            if intermediate not in accumulator:
+                yield from find_all_paths_reversedly(revtransmap, intermediate, target, accumulator)
+        yield from EMPTY_ITER
+
+
+def find_related_to_root(graph, root, sequential=None):
+    print(root)
+    lst = list()
+    if sequential is None:
+        sequential = list(graph.keys())
+    sequential = tuple(sequential)
+    for item in find_all_loopy_paths_reversedly(graph, root['name'], sequential):
+        item = [sequential[i] for i in item]
+        print(item)
+        lst.append(item)
+    print()
+    print(lst)
+    print()
+    return lst
+
+
 def convert_outputs(prefix, temporal_context):
     if not Path(f'{prefix}.json').exists():
         generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
@@ -315,6 +412,15 @@ def convert_outputs(prefix, temporal_context):
         plt.savefig(f'{prefix}_weighted.pdf')
         plt.savefig(f'{prefix}_weighted.png')
         plt.close()
+    # Find documents related to root document
+    if not Path(f'{prefix}_root.json').exists():
+        Path(f'{prefix}_root.json').write_text(json.dumps(
+            graph[find_rootdoc()['name']]
+        ))
+    if not Path(f'{prefix}_related_to_root.json').exists() or True:
+        Path(f'{prefix}_related_to_root.json').write_text(json.dumps(
+            find_related_to_root(graph, graph[find_rootdoc()['name']], metrics['matrix_labels'])
+        ))
 
 
 def main():
