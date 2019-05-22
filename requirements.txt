@@ -3,3 +3,5 @@ html5lib
 graphviz
 networkx
 matplotlib
+Orange3
+PyQt5

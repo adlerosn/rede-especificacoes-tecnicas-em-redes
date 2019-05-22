@@ -273,7 +273,33 @@ def find_related_to_root(graph, root, sequential=None):
     return lst
 
 
+def draw_degree_quadrants(graph, degrees, key):
+    points = [
+        (degree[f'{key}_in'], degree[f'{key}_out'])
+        for degree in degrees.values()
+    ]
+    xs, ys = list(zip(*points))
+    maxx = max(xs)
+    minx = min(xs)
+    maxy = max(ys)
+    miny = min(ys)
+    avgx = sum(xs)/len(xs)
+    avgy = sum(ys)/len(ys)
+    plt.scatter(*list(zip(*points)), color='blue', alpha=.1)
+    plt.plot([minx, maxx], [avgy, avgy], color='red', alpha=.5)
+    plt.plot([avgx, avgx], [miny, maxy], color='red', alpha=.5)
+    plt.text(0, -maxy/6, 'x=%.2f; y=%.2f' % (avgx, avgy), color='red')
+    plt.xlabel(f"{key} in")
+    plt.ylabel(f"{key} out")
+
+
 def convert_outputs(prefix, temporal_context):
+    Path("flavors.json").write_text(
+        json.dumps([
+            *json.loads(Path("flavors.json").read_text()),
+            prefix
+        ])
+    )
     if not Path(f'{prefix}.json').exists():
         generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
     graph = json.loads(Path(f'{prefix}.json').read_text())
@@ -412,17 +438,26 @@ def convert_outputs(prefix, temporal_context):
         plt.savefig(f'{prefix}_weighted.pdf')
         plt.savefig(f'{prefix}_weighted.png')
         plt.close()
-    # Find documents related to root document
+    # Leave root document explicit
     if not Path(f'{prefix}_root.json').exists():
         Path(f'{prefix}_root.json').write_text(json.dumps(
             graph[find_rootdoc()['name']]
         ))
-    if not Path(f'{prefix}_related_to_root.json').exists() or True:
-        Path(f'{prefix}_related_to_root.json').write_text(json.dumps(
-            find_related_to_root(graph, graph[find_rootdoc()['name']], metrics['matrix_labels'])
-        ))
+    # Plot quadrants
+    for weight in [True, False]:
+        desc = ('un'*int(not weight))+'weighted'
+        if True or not Path(f'{prefix}_quads_{desc}.pdf').exists() or not Path(f'{prefix}_quads_{desc}.png').exists():
+            draw_degree_quadrants(
+                graph,
+                metrics['degree'],
+                'weight' if weight else 'degree'
+            )
+            plt.savefig(f'{prefix}_quads_{desc}.pdf')
+            plt.savefig(f'{prefix}_quads_{desc}.png')
+            plt.close()
 
 
 def main():
+    Path("flavors.json").write_text("[]")
     convert_outputs('graph', True)
     convert_outputs('graph_noctx', False)

@@ -3,7 +3,7 @@ all: virtualenv
 
 depends: virtualenv
 	make upgrade_pip
-	. virtualenv/bin/activate ; pip install -r requirements.txt
+	. virtualenv/bin/activate ; pip install -U -r requirements.txt
 
 virtualenv:
 	python3 -m virtualenv -p python3 virtualenv
@@ -11,3 +11,6 @@ virtualenv:
 
 upgrade_pip: virtualenv
 	. virtualenv/bin/activate ; pip install --upgrade pip
+
+orange:
+	. virtualenv/bin/activate ; orange-canvas
