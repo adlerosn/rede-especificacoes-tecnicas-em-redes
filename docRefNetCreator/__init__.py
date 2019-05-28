@@ -16,6 +16,7 @@ from .document_finder import find_references as referenceFinder
 
 INFINITY = float('inf')
 EMPTY_ITER = iter(list())
+QUADRANT_COLOR = ['#7DB643', '#43B5B5', '#7C43B5', '#B54343']
 
 
 def find_rootdoc(rootdoc='rootdoc.txt'):
@@ -273,7 +274,19 @@ def find_related_to_root(graph, root, sequential=None):
     return lst
 
 
+def get_quadrant(x, y, lx, ly):
+    if x < lx and y < ly:
+        return 3
+    elif x >= lx and y < ly:
+        return 4
+    elif x >= lx and y >= ly:
+        return 1
+    else:
+        return 2
+
+
 def draw_degree_quadrants(graph, degrees, key):
+    quadrants = dict()
     points = [
         (degree[f'{key}_in'], degree[f'{key}_out'])
         for degree in degrees.values()
@@ -285,21 +298,42 @@ def draw_degree_quadrants(graph, degrees, key):
     miny = min(ys)
     avgx = sum(xs)/len(xs)
     avgy = sum(ys)/len(ys)
+    midx = (maxx-minx)/2
+    midy = (maxy-miny)/2
+    quads = [0, 0, 0, 0]
+    for point in points:
+        quads[get_quadrant(*point, midx, midy)-1] += 1
+    plt.figure(figsize=(12, 9), dpi=300)
     plt.scatter(*list(zip(*points)), color='blue', alpha=.1)
     plt.plot([minx, maxx], [avgy, avgy], color='red', alpha=.5)
     plt.plot([avgx, avgx], [miny, maxy], color='red', alpha=.5)
-    plt.text(0, -maxy/6, 'x=%.2f; y=%.2f' % (avgx, avgy), color='red')
+    plt.plot([minx, maxx], [midy, midy], color='green', alpha=.5)
+    plt.plot([midx, midx], [miny, maxy], color='green', alpha=.5)
+    plt.text(1.5*midx, 1.5*midy, str(quads[0]), color='green')
+    plt.text(0.5*midx, 1.5*midy, str(quads[1]), color='green')
+    plt.text(0.5*midx, 0.5*midy, str(quads[2]), color='green')
+    plt.text(1.5*midx, 0.5*midy, str(quads[3]), color='green')
+    plt.text(0, -maxy/9, 'x=%.2f; y=%.2f' % (avgx, avgy), color='red')
+    plt.text(1.5*midx, -maxy/9, 'x=%.2f; y=%.2f' % (midx, midy), color='green')
     plt.xlabel(f"{key} in")
     plt.ylabel(f"{key} out")
+    quadrants['centroid'] = {'x': avgx, 'y': avgy}
+    quadrants['halfrange'] = {'x': midx, 'y': midy}
+    quadrants['halfrange_quadrants'] = quads
+    return quadrants
 
 
 def convert_outputs(prefix, temporal_context):
     Path("flavors.json").write_text(
-        json.dumps([
-            *json.loads(Path("flavors.json").read_text()),
-            prefix
-        ])
+        json.dumps(
+            [
+                *json.loads(Path("flavors.json").read_text()),
+                prefix
+            ],
+            indent=4
+        )
     )
+    label_key = 'name' if temporal_context else 'generic_name'
     if not Path(f'{prefix}.json').exists():
         generate_graph(grapfn=f'{prefix}.json', keep_temporal_context=temporal_context)
     graph = json.loads(Path(f'{prefix}.json').read_text())
@@ -310,17 +344,17 @@ def convert_outputs(prefix, temporal_context):
         Path(f'{prefix}_metrics_distances.json').write_text(json.dumps(embed_metrics_distance(graph, metrics)))
     # to_networkx
     g = networkx.DiGraph()
-    g.add_nodes_from(list(graph.keys()) if temporal_context else [node['generic_name'] for node in graph.values()])
+    g.add_nodes_from([node[label_key] for node in graph.values()])
     g.add_edges_from([
-        ((node_source['name'], target) if temporal_context else (node_source['generic_name'], graph[target]['generic_name']))
+        (node_source[label_key], graph[target][label_key])
         for node_source in graph.values()
         for target in node_source['mention_freq'].keys()
     ])
     networkx.write_graphml(g, f'{prefix}_unweighted.graphml')
     for src in graph.values():
-        srcnm = src['name' if temporal_context else 'generic_name']
+        srcnm = src[label_key]
         for tgt, w in src['mention_freq'].items():
-            tgtnm = graph[tgt]['name' if temporal_context else 'generic_name']
+            tgtnm = graph[tgt][label_key]
             g[srcnm][tgtnm]['weight'] = w
     networkx.write_graphml(g, f'{prefix}_weighted.graphml')
     g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
@@ -347,7 +381,7 @@ def convert_outputs(prefix, temporal_context):
     cur.execute(f'''CREATE VIEW nodes AS
         SELECT
             rowid as id,
-            {'name' if temporal_context else 'generic_name'} as label
+            {label_key} as label
         FROM node''')
     cur.execute('''CREATE VIEW edges AS
         SELECT
@@ -399,8 +433,8 @@ def convert_outputs(prefix, temporal_context):
             node_src_nm = node['name']
             for node_dst_nm, frequency in node['mention_freq'].items():
                 file.write('%s,%s,%d\n' % (
-                    graph[node_src_nm]['name' if temporal_context else 'generic_name'],
-                    graph[node_dst_nm]['name' if temporal_context else 'generic_name'],
+                    graph[node_src_nm][label_key],
+                    graph[node_dst_nm][label_key],
                     frequency
                 ))
     # to_graphviz
@@ -424,7 +458,7 @@ def convert_outputs(prefix, temporal_context):
     g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
     if not Path(f'{prefix}_metrics_connectivity.json').exists():
         Path(f'{prefix}_metrics_connectivity.json').write_text(json.dumps(
-            embed_metrics_connectivity(graph, metrics, g, 'name' if temporal_context else 'generic_name'), indent=2))
+            embed_metrics_connectivity(graph, metrics, g, label_key), indent=2))
     # matplotlib rendering
     if not Path(f'{prefix}_unweighted.pdf').exists() or not Path(f'{prefix}_unweighted.png').exists():
         g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
@@ -446,15 +480,89 @@ def convert_outputs(prefix, temporal_context):
     # Plot quadrants
     for weight in [True, False]:
         desc = ('un'*int(not weight))+'weighted'
-        if True or not Path(f'{prefix}_quads_{desc}.pdf').exists() or not Path(f'{prefix}_quads_{desc}.png').exists():
-            draw_degree_quadrants(
-                graph,
-                metrics['degree'],
-                'weight' if weight else 'degree'
-            )
-            plt.savefig(f'{prefix}_quads_{desc}.pdf')
-            plt.savefig(f'{prefix}_quads_{desc}.png')
-            plt.close()
+        if not Path(f'{prefix}_quads_{desc}.pdf').exists() or not Path(f'{prefix}_quads_{desc}.png').exists():
+            key = 'weight' if weight else 'degree'
+            dimen_cutoff = draw_degree_quadrants(graph, metrics['degree'], key)
+            plt.savefig(f'{prefix}_quads_{desc}.pdf', bbox_inches='tight')
+            plt.savefig(f'{prefix}_quads_{desc}.png', bbox_inches='tight')
+            Path(f'{prefix}_quads_{desc}.json').read_text(json.dumps(dimen_cutoff, indent=4))
+    for weight in [True, False]:
+        desc = ('un'*int(not weight))+'weighted'
+        if True or not Path(f'{prefix}_quads_{desc}.csv').exists():
+            key = 'weight' if weight else 'degree'
+            dimen_cutoff = json.loads(Path(f'{prefix}_quads_{desc}.json').read_text())
+            with open(f'{prefix}_quads_{desc}.csv', 'w') as file:
+                fmt = ','.join(['%s']*(4+int(weight)))+'\n'
+                hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
+                file.write(fmt % ("source", "target", *(["weight"]*int(weight)), "source_color", "target_color"))
+                for node in graph.values():
+                    node_src_nm = node['name']
+                    src_metric = metrics['degree'][node_src_nm]
+                    for node_dst_nm, frequency in node['mention_freq'].items():
+                        dst_metric = metrics['degree'][node_dst_nm]
+                        file.write(fmt % (
+                            graph[node_src_nm][label_key],
+                            graph[node_dst_nm][label_key],
+                            *([frequency]*int(weight)),
+                            QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
+                            QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                        ))
+            with open(f'{prefix}_quads_{desc}_nodst3rdquad.csv', 'w') as file:
+                fmt = ','.join(['%s']*(4+int(weight)))+'\n'
+                hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
+                file.write(fmt % ("source", "target", *(["weight"]*int(weight)), "source_color", "target_color"))
+                for node in graph.values():
+                    node_src_nm = node['name']
+                    src_metric = metrics['degree'][node_src_nm]
+                    for node_dst_nm, frequency in node['mention_freq'].items():
+                        dst_metric = metrics['degree'][node_dst_nm]
+                        if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
+                            continue
+                        file.write(fmt % (
+                            graph[node_src_nm][label_key],
+                            graph[node_dst_nm][label_key],
+                            *([frequency]*int(weight)),
+                            QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
+                            QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                        ))
+            with open(f'{prefix}_quads_{desc}_nosrc3rdquad.csv', 'w') as file:
+                fmt = ','.join(['%s']*(4+int(weight)))+'\n'
+                hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
+                file.write(fmt % ("source", "target", *(["weight"]*int(weight)), "source_color", "target_color"))
+                for node in graph.values():
+                    node_src_nm = node['name']
+                    src_metric = metrics['degree'][node_src_nm]
+                    if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) == 3:
+                        continue
+                    for node_dst_nm, frequency in node['mention_freq'].items():
+                        dst_metric = metrics['degree'][node_dst_nm]
+                        file.write(fmt % (
+                            graph[node_src_nm][label_key],
+                            graph[node_dst_nm][label_key],
+                            *([frequency]*int(weight)),
+                            QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
+                            QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                        ))
+            with open(f'{prefix}_quads_{desc}_no3rdquad.csv', 'w') as file:
+                fmt = ','.join(['%s']*(4+int(weight)))+'\n'
+                hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
+                file.write(fmt % ("source", "target", *(["weight"]*int(weight)), "source_color", "target_color"))
+                for node in graph.values():
+                    node_src_nm = node['name']
+                    src_metric = metrics['degree'][node_src_nm]
+                    if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) == 3:
+                        continue
+                    for node_dst_nm, frequency in node['mention_freq'].items():
+                        dst_metric = metrics['degree'][node_dst_nm]
+                        if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
+                            continue
+                        file.write(fmt % (
+                            graph[node_src_nm][label_key],
+                            graph[node_dst_nm][label_key],
+                            *([frequency]*int(weight)),
+                            QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
+                            QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                        ))
 
 
 def main():
