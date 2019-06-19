@@ -563,6 +563,26 @@ def convert_outputs(prefix, temporal_context):
                             QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
                             QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
                         ))
+            for node in graph.values():
+                node_src_nm = node['name']
+                src_metric = metrics['degree'][node_src_nm]
+                if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) in [2, 3]:
+                    continue
+                with open(f'{prefix}_quads_{desc}_no2nd3rdquad_{node["generic_name"]}.csv', 'w') as file:
+                    fmt = ','.join(['%s']*(4+int(weight)))+'\n'
+                    hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
+                    file.write(fmt % ("source", "target", *(["weight"]*int(weight)), "source_color", "target_color"))
+                    for node_dst_nm, frequency in node['mention_freq'].items():
+                        dst_metric = metrics['degree'][node_dst_nm]
+                        if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
+                            continue
+                        file.write(fmt % (
+                            graph[node_src_nm][label_key],
+                            graph[node_dst_nm][label_key],
+                            *([frequency]*int(weight)),
+                            QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
+                            QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                        ))
 
 
 def main():
