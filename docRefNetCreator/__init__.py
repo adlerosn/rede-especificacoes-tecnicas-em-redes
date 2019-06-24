@@ -9,8 +9,10 @@ import multiprocessing
 from pathlib import Path
 import matplotlib.pyplot as plt
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
-from .documents import fromFile as DocumentFromFile
+from .documents import PlainCachedDocument
+from .documents import fromExtension as DocumentFromExtension
 from .document_finder import classes as docClasses
 from .document_finder import find_references as referenceFinder
 
@@ -62,12 +64,13 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
         if docPath in analyzedDocPaths:
             continue
         analyzedDocPaths.append(docPath)
-        docFF = DocumentFromFile(str(docPath))
+        docFFcls = DocumentFromExtension(str(docPath).split('.')[-1])
         print(f"Document @ {currName}")
-        if docFF is None:
+        if docFFcls is None:
             continue
-        doc = docFF.parsed_from_cache(str(docPath)[6:])
-        newReferences = referenceFinder(doc, docCchMgr.context(docPath))
+        docFF = PlainCachedDocument(str(docPath)[6:], docFFcls, docPath)
+        doc = docFF.parsed_from_cache()
+        newReferences = referenceFinder(str(docPath)[6:], doc, docCchMgr.context(docPath))
         if not keep_temporal_context:
             newReferences = list(map(lambda a: a.whithout_temporal_context(), newReferences))
         for newReference in newReferences:
@@ -76,10 +79,11 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
             if newDocPath is not None:
                 newName = str(newDocPath)[6:]
             graph[currName]['mention_freq'][newName] = graph[currName]['mention_freq'].get(newName, 0) + 1
-        pendingDocCchMgr = sorted(
-            [*pendingDocCchMgr, *newReferences],
+        pendingDocCchMgr += sorted(
+            newReferences,
             key=lambda dcm: (not dcm.is_cached(), dcm.slowness(), dcm._identifier)
         )
+        print(f"Queue size: {len(pendingDocCchMgr)} // Processed: {len(analyzedDocPaths)}")
     Path(grapfn).write_text(json.dumps(graph))
 
 
@@ -563,23 +567,25 @@ def convert_outputs(prefix, temporal_context):
                             QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
                             QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
                         ))
+        if True:
+            folder_out = Path(f'{prefix}_quads_unweighted_no2nd3rdquad')
+            folder_out.mkdir(parents=True, exist_ok=True)
             for node in graph.values():
                 node_src_nm = node['name']
                 src_metric = metrics['degree'][node_src_nm]
                 if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) in [2, 3]:
                     continue
-                with open(f'{prefix}_quads_{desc}_no2nd3rdquad_{node["generic_name"]}.csv', 'w') as file:
-                    fmt = ','.join(['%s']*(4+int(weight)))+'\n'
+                with folder_out.joinpath(f'{node["generic_name"]}.csv').open('w') as file:
+                    fmt = ','.join(['%s']*4)+'\n'
                     hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
-                    file.write(fmt % ("source", "target", *(["weight"]*int(weight)), "source_color", "target_color"))
+                    file.write(fmt % ("source", "target", "source_color", "target_color"))
                     for node_dst_nm, frequency in node['mention_freq'].items():
                         dst_metric = metrics['degree'][node_dst_nm]
-                        if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
-                            continue
+                        # if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
+                        #     continue
                         file.write(fmt % (
                             graph[node_src_nm][label_key],
                             graph[node_dst_nm][label_key],
-                            *([frequency]*int(weight)),
                             QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
                             QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
                         ))

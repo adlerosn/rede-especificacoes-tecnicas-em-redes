@@ -3,11 +3,17 @@
 
 from .document import Document
 from .pdfreader import PdfReader
+from .txtreader import TxtReader
+from .zipreader import ZipReader
+from .plaincached import PlainCachedDocument
+from . import zipreader
 from typing import Optional
 from typing import Type
 
 readers = [
-    PdfReader
+    PdfReader,
+    TxtReader,
+    ZipReader,
 ]
 
 
@@ -23,7 +29,11 @@ def fromFile(path: str) -> Optional[Document]:
     return None if document is None else document(path)
 
 
+zipreader.fromExtension = fromExtension
+zipreader.readers = readers
+
 __all__ = [
+    'PlainCachedDocument',
     'Document',
     'fromExtension',
     'fromFile',

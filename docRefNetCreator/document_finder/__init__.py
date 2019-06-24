@@ -4,6 +4,7 @@
 import re
 import sys
 import json
+import pickle
 import datetime
 
 from typing import Any
@@ -12,6 +13,7 @@ from typing import List
 from typing import Tuple
 from typing import Optional
 from pathlib import Path
+from slugify import slugify
 
 from ..downloader import BeautifulSoup
 from ..downloader import simpleDownloader
@@ -21,7 +23,7 @@ classes = dict()
 
 rgx_itu = re.compile(r"""((?:ITU-\w)|(?:CCITT))(?: Recommendation)? ([A-Z]+\.[-\d\.]+)(?: \(((?:\d{2}\/)?\d{4})\))?""")
 rgx_iso = re.compile(r"""(ISO(?:\/EC)?(?:\/IEC)?(?:\/IEEE)?)(?: (T?R?))? ([\d+-\.]+)(?::(\d+))?""")
-rgx_rfc = re.compile(r"""(RFC) ([0-9]+)""")
+rgx_rfc = re.compile(r"""(RFC)(?:\ |\.|-|_)?([0-9]+)""")
 
 rgx_itu_fix = re.compile(r"""(\w\.[-\d\.]+)(?:-)(\d{4})""")
 
@@ -46,19 +48,11 @@ def expand_year(yr):
         return str(yr)
 
 
-def dwnld_iso_list():
-    return None
-    return simpleDownloader.getUrl("https://standards.iso.org/ittf/PubliclyAvailableStandards/index.html")
-
-
-def dwnld_iso(match):
-    return None
-    simpleDownloader.cleanCookies()
-    isofiles = dwnld_iso_list()
-    isofile = None
-    path = f"/ittf/PubliclyAvailableStandards/{isofile}"
-    simpleDownloader.setCookie("url_ok", path)
-    return simpleDownloader.getUrlBytes(f"https://standards.iso.org{path}")
+def int_safe(val: str, default: int) -> int:
+    try:
+        return int(val)
+    except BaseException:
+        return default
 
 
 class OnlineStandard(object):
@@ -96,7 +90,9 @@ class RFCStandard(OnlineStandard):
 
     def download_all(self) -> Dict[str, bytes]:
         simpleDownloader.cleanCookies()
-        return {'latest': simpleDownloader.getUrlBytes(f"https://tools.ietf.org/rfc/rfc{self._identifier}.txt")}
+        link = f"https://tools.ietf.org/rfc/rfc{self._identifier}.txt"
+        print(link)
+        return {'latest': simpleDownloader.getUrlBytes(link)}
 
     def cached_all(self) -> Dict[str, Path]:
         type(self).cachedir.mkdir(parents=True, exist_ok=True)
@@ -272,8 +268,117 @@ class ISOStandard(OnlineStandard):
     cachedir = Path('cache', 'iso')
     def __str__(self): return f"ISO {self._identifier}"
 
+    def __download_index(self, redownload=False):
+        indexfile = self.cachedir.joinpath('__index.json')
+        indexfile.parent.mkdir(parents=True, exist_ok=True)
+        if not indexfile.exists() or redownload:
+            documents = list()
+            simpleDownloader.cleanCookies()
+            bs = BeautifulSoup(simpleDownloader.getUrlBytes(
+                "https://standards.iso.org/ittf/PubliclyAvailableStandards/"
+            ))
+            for row in bs.select("table#pas tbody tr"):
+                (stdcell, edcell, titlecell, committeecell) = row.select("td")
+                (stdnm, ednm, titlenm, committeenm) = [
+                    ' '.join(i.text.strip().split())
+                    for i in (stdcell, edcell, titlecell, committeecell)
+                ]
+                if stdnm == 'ISO/IEC 2382:2015':
+                    continue  # won't parse a JS-heavy HTML5 page
+                stdlink = None
+                try:
+                    stdlink = stdcell.find('a', href=True)['href']
+                except TypeError:
+                    continue
+                if stdlink.startswith('ittf/'):
+                    stdlink = '/'+stdlink
+                if stdlink.startswith('/ittf/'):
+                    stdlink = 'https://standards.iso.org'+stdlink
+                if stdlink in [
+                    'https://standards.iso.org/ittf/PubliclyAvailableStandards/c035952_ISO_IEC_9899_1999_Cor_1_2001(E).pdf',
+                    'https://standards.iso.org/ittf/PubliclyAvailableStandards/c064801_  ISO_IEC_19395_2015.zip',
+                ]:
+                    continue  # returns 404 and never downloads
+                documents.append({
+                    'url': stdlink,
+                    'standard': stdnm,
+                    'edition': ednm,
+                    'title': titlenm,
+                    'committee': committeenm,
+                })
+            indexfile.write_text(json.dumps(documents, indent=2))
+        return indexfile
 
-def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List[OnlineStandard]:
+    @property
+    def _index(self) -> List[Dict[str, str]]:
+        return json.loads(self.__download_index().read_text())
+
+    @property
+    def _index_entry(self) -> Optional[Dict[str, str]]:
+        filtered = [i for i in self._index if self._identifier in i['standard']]
+        if len(filtered) <= 0:
+            return None
+        filtered = sorted(
+            filtered,
+            key=lambda i: (
+                len(i['standard']),
+                i['standard'],
+                -int_safe(''.join([x for x in i['edition'] if x in '0123456789']), 0)
+            )
+        )
+        return filtered[0]
+
+    @property
+    def _index_fn(self) -> Optional[str]:
+        entry = self._index_entry
+        return (
+            slugify(entry['url'].split('/')[-1], ok='-_.', only_ascii=True)
+            if entry is not None else
+            None
+        )
+
+    def download_all(self) -> Dict[str, bytes]:
+        d = dict()
+        entry = self._index_entry
+        if entry is not None:
+            fn = self._index_fn
+            print(entry['title'])
+            print(entry['url'])
+            simpleDownloader.cleanCookies()
+            simpleDownloader.setCookie("url_ok", entry['url'][25:])
+            bts = simpleDownloader.getUrlBytes(entry['url'])
+            if bts is not None:
+                d[fn] = bts
+        return d
+
+    def cached_all(self) -> Dict[str, Path]:
+        d = dict()
+        entry = self._index_entry
+        if entry is not None:
+            fn = self._index_fn
+            pt = self.cachedir.joinpath(fn)
+            if pt.exists():
+                d[fn] = pt
+            else:
+                for k, v in self.download_all().items():
+                    pt2 = self.cachedir.joinpath(k)
+                    pt2.write_bytes(v)
+                    d[k] = pt2
+        return d
+
+    def cached(self) -> Optional[Path]:
+        self.cached_all()
+        return None if self._index_fn is None else self.cachedir.joinpath(self._index_fn)
+
+    def is_cached(self) -> bool:
+        return False if self._index_fn is None else self.cachedir.joinpath(self._index_fn).exists()
+
+
+def find_references(file: str, text: str, context: Optional[Dict[str, str]] = None) -> List[OnlineStandard]:
+    cache = Path('graphcache', file)
+    if cache.exists():
+        return pickle.loads(cache.read_bytes())
+    print(f"find_references cachemiss: {file} ", end='')
     refs = list()
     for match in rgx_itu.finditer(text):
         groups = list(match.groups())
@@ -310,6 +415,9 @@ def find_references(text: str, context: Optional[Dict[str, str]] = None) -> List
         if len(nm) == 0:
             continue
         refs.append(ISOStandard(nm, yr, **context))
+    print(f"- {len(refs)} found")
+    cache.parent.mkdir(exist_ok=True, parents=True)
+    cache.write_bytes(pickle.dumps(refs))
     return refs
 
 

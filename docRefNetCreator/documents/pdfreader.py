@@ -3,6 +3,7 @@
 
 import subprocess
 from pathlib import Path
+from typing import List
 from typing import Union
 from .document import Document
 
@@ -38,7 +39,7 @@ class PdfReader(Document):
         super().__init__()
         self._set_document_pages(self.__convert_pdf_to_text(resource))
 
-    def __convert_pdf_to_text(self, resource) -> bytes:
+    def __convert_pdf_to_text(self, resource) -> List[str]:
         proc = subprocess.run(
             ['pdftotext', '-layout', '-', '-'],
             stdout=subprocess.PIPE,

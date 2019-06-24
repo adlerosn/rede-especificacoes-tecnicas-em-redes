@@ -5,3 +5,4 @@ networkx
 matplotlib
 Orange3
 PyQt5
+unicode-slugify

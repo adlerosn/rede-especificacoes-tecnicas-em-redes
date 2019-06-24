@@ -1,6 +1,8 @@
 /*.nlp*
 /cache/**
 /cache
+/graphcache/**
+/graphcache
 /plaincache/**
 /plaincache
 /corpus/**
