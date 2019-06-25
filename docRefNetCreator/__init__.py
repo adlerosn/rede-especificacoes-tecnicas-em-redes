@@ -627,9 +627,11 @@ def convert_outputs(prefix, temporal_context):
             maxNode = sorted([x for x in revLink[node] if x != node], key=lambda a: -pr[a])[0]
             sptr[node] = maxNode
         Path(f'{prefix}_pagerank_ranked_spannedtree.json').write_text(json.dumps(sptr, indent=2))
-        table = ["source,target"]
+        table = ["source,target,source_weight,target_weight"]
         for ns, nd in sptr.items():
-            table.append(f"{ns},{nd}")
+            ws = "%.32f" % pr[ns]
+            wd = "%.32f" % pr[nd]
+            table.append(f"{ns},{nd},{ws},{wd}")
         Path(f'{prefix}_pagerank_ranked_spannedtree.csv').write_text('\n'.join(table)+'\n')
 
 
