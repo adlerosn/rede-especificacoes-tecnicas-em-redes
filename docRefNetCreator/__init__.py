@@ -16,6 +16,7 @@ from .documents import PlainCachedDocument
 from .documents import fromExtension as DocumentFromExtension
 from .document_finder import classes as docClasses
 from .document_finder import find_references as referenceFinder
+from .word_count import WordCounter
 
 INFINITY = float('inf')
 EMPTY_ITER = iter(list())
@@ -579,18 +580,32 @@ def convert_outputs(prefix, temporal_context):
                 if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) in [2, 3]:
                     continue
                 with folder_out.joinpath(f'{node["generic_name"]}.csv').open('w') as file:
-                    fmt = ','.join(['%s']*4)+'\n'
+                    fmt = ','.join(['%s']*5)+'\n'
                     hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
-                    file.write(fmt % ("source", "target", "source_color", "target_color"))
+                    file.write(fmt % ("source", "target", "source_color", "target_color", "similarity"))
+                    srcWC = None
+                    srcCacheKey = graph[node_src_nm]['filepath'][6:]
+                    if len(srcCacheKey) > 0:
+                        srcDoc = PlainCachedDocument(srcCacheKey, None).parse(' ')
+                        srcWC = WordCounter(srcDoc)
                     for node_dst_nm, frequency in node['mention_freq'].items():
                         dst_metric = metrics['degree'][node_dst_nm]
                         # if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
                         #     continue
+                        similarity = '?'
+                        dstCacheKey = graph[node_dst_nm]['filepath'][6:]
+                        if len(dstCacheKey) > 0:
+                            dstDoc = PlainCachedDocument(dstCacheKey, None).parse(' ')
+                            dstWC = WordCounter(dstDoc)
+                            if srcWC is not None:
+                                similarity = srcWC.vectorSimilarity(dstWC)
+                                similarity = str(similarity[0][0])
                         file.write(fmt % (
                             graph[node_src_nm][label_key],
                             graph[node_dst_nm][label_key],
                             QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
                             QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                            similarity,
                         ))
 
 

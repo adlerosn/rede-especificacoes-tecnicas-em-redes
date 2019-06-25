@@ -1,2 +1,2 @@
-source,target,source_color,target_color
-ITU H.248,ITU H.248,#B54343,#B54343
+source,target,source_color,target_color,similarity
+ITU H.248,ITU H.248,#B54343,#B54343,0.9999999999999998
