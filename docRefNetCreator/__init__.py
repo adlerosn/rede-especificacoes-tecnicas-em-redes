@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import json
+import queue
 import sqlite3
 import networkx
 import graphviz
@@ -40,11 +41,12 @@ def find_rootdoc(rootdoc='rootdoc.txt'):
 
 def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_context=True):
     rootsrc, rootname = Path(rootdoc).read_text().splitlines()
-    analyzedDocPaths = list()
-    pendingDocCchMgr = [docClasses[rootsrc](rootname)]
+    analyzedDocPaths = set()
+    pendingDocCchMgr = queue.Queue()
+    pendingDocCchMgr.put(docClasses[rootsrc](rootname))
     graph = dict()
-    while len(pendingDocCchMgr) > 0:
-        docCchMgr, *pendingDocCchMgr = pendingDocCchMgr
+    while not pendingDocCchMgr.empty():
+        docCchMgr = pendingDocCchMgr.get_nowait()
         docPath = docCchMgr.cached()
         currName = f"{docCchMgr.__class__.__name__}: {docCchMgr._identifier}"
         if docPath is not None:
@@ -63,7 +65,7 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
             }
         if docPath in analyzedDocPaths:
             continue
-        analyzedDocPaths.append(docPath)
+        analyzedDocPaths.add(docPath)
         docFFcls = DocumentFromExtension(str(docPath).split('.')[-1])
         print(f"Document @ {currName}")
         if docFFcls is None:
@@ -79,11 +81,12 @@ def generate_graph(rootdoc='rootdoc.txt', grapfn='graph.json', keep_temporal_con
             if newDocPath is not None:
                 newName = str(newDocPath)[6:]
             graph[currName]['mention_freq'][newName] = graph[currName]['mention_freq'].get(newName, 0) + 1
-        pendingDocCchMgr += sorted(
+        for item in sorted(
             newReferences,
             key=lambda dcm: (not dcm.is_cached(), dcm.slowness(), dcm._identifier)
-        )
-        print(f"Queue size: {len(pendingDocCchMgr)} // Processed: {len(analyzedDocPaths)}")
+        ):
+            pendingDocCchMgr.put_nowait(item)
+        print(f"Queue size: {pendingDocCchMgr.qsize()} // Processed: {len(analyzedDocPaths)}")
     Path(grapfn).write_text(json.dumps(graph))
 
 
@@ -489,7 +492,7 @@ def convert_outputs(prefix, temporal_context):
             dimen_cutoff = draw_degree_quadrants(graph, metrics['degree'], key)
             plt.savefig(f'{prefix}_quads_{desc}.pdf', bbox_inches='tight')
             plt.savefig(f'{prefix}_quads_{desc}.png', bbox_inches='tight')
-            Path(f'{prefix}_quads_{desc}.json').read_text(json.dumps(dimen_cutoff, indent=4))
+            Path(f'{prefix}_quads_{desc}.json').write_text(json.dumps(dimen_cutoff, indent=4))
     for weight in [True, False]:
         desc = ('un'*int(not weight))+'weighted'
         if True or not Path(f'{prefix}_quads_{desc}.csv').exists():

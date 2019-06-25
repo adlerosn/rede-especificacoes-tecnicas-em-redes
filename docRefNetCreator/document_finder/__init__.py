@@ -416,7 +416,8 @@ def find_references(file: str, text: str, context: Optional[Dict[str, str]] = No
             continue
         refs.append(ISOStandard(nm, yr, **context))
     print(f"- {len(refs)} found")
-    cache.parent.mkdir(exist_ok=True, parents=True)
+    if not cache.parent.exists():
+        cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_bytes(pickle.dumps(refs))
     return refs
 
