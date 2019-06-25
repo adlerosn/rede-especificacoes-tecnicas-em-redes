@@ -571,42 +571,66 @@ def convert_outputs(prefix, temporal_context):
                             QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
                             QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
                         ))
-        if True:
-            folder_out = Path(f'{prefix}_quads_unweighted_no2nd3rdquad')
-            folder_out.mkdir(parents=True, exist_ok=True)
-            for node in graph.values():
-                node_src_nm = node['name']
-                src_metric = metrics['degree'][node_src_nm]
-                if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) in [2, 3]:
-                    continue
-                with folder_out.joinpath(f'{node["generic_name"]}.csv').open('w') as file:
-                    fmt = ','.join(['%s']*5)+'\n'
-                    hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
-                    file.write(fmt % ("source", "target", "source_color", "target_color", "similarity"))
-                    srcWC = None
-                    srcCacheKey = graph[node_src_nm]['filepath'][6:]
-                    if len(srcCacheKey) > 0:
-                        srcDoc = PlainCachedDocument(srcCacheKey, None).parse(' ')
-                        srcWC = WordCounter(srcDoc)
-                    for node_dst_nm, frequency in node['mention_freq'].items():
-                        dst_metric = metrics['degree'][node_dst_nm]
-                        # if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
-                        #     continue
-                        similarity = '?'
-                        dstCacheKey = graph[node_dst_nm]['filepath'][6:]
-                        if len(dstCacheKey) > 0:
-                            dstDoc = PlainCachedDocument(dstCacheKey, None).parse(' ')
-                            dstWC = WordCounter(dstDoc)
-                            if srcWC is not None:
-                                similarity = srcWC.vectorSimilarity(dstWC)
-                                similarity = str(similarity[0][0])
-                        file.write(fmt % (
-                            graph[node_src_nm][label_key],
-                            graph[node_dst_nm][label_key],
-                            QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
-                            QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
-                            similarity,
-                        ))
+    if True:
+        folder_out = Path(f'{prefix}_quads_unweighted_no2nd3rdquad')
+        folder_out.mkdir(parents=True, exist_ok=True)
+        for node in graph.values():
+            node_src_nm = node['name']
+            src_metric = metrics['degree'][node_src_nm]
+            if get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr) in [2, 3]:
+                continue
+            with folder_out.joinpath(f'{node["generic_name"]}.csv').open('w') as file:
+                fmt = ','.join(['%s']*5)+'\n'
+                hr = (dimen_cutoff['halfrange']['x'], dimen_cutoff['halfrange']['y'])
+                file.write(fmt % ("source", "target", "source_color", "target_color", "similarity"))
+                srcWC = None
+                srcCacheKey = graph[node_src_nm]['filepath'][6:]
+                if len(srcCacheKey) > 0:
+                    srcDoc = PlainCachedDocument(srcCacheKey, None).parse(' ')
+                    srcWC = WordCounter(srcDoc)
+                for node_dst_nm, frequency in node['mention_freq'].items():
+                    dst_metric = metrics['degree'][node_dst_nm]
+                    # if get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr) == 3:
+                    #     continue
+                    similarity = '?'
+                    dstCacheKey = graph[node_dst_nm]['filepath'][6:]
+                    if len(dstCacheKey) > 0:
+                        dstDoc = PlainCachedDocument(dstCacheKey, None).parse(' ')
+                        dstWC = WordCounter(dstDoc)
+                        if srcWC is not None:
+                            similarity = srcWC.vectorSimilarity(dstWC)
+                            similarity = str(similarity[0][0])
+                    file.write(fmt % (
+                        graph[node_src_nm][label_key],
+                        graph[node_dst_nm][label_key],
+                        QUADRANT_COLOR[get_quadrant(src_metric[f'{key}_in'], src_metric[f'{key}_out'], *hr)-1],
+                        QUADRANT_COLOR[get_quadrant(dst_metric[f'{key}_in'], dst_metric[f'{key}_out'], *hr)-1],
+                        similarity,
+                    ))
+    if True or not Path(f'{prefix}_pagerank.json').exists():
+        g = networkx.DiGraph(networkx.read_graphml(f'{prefix}_unweighted.graphml'))
+        pr = networkx.pagerank(g)
+        Path(f'{prefix}_pagerank.json').write_text(json.dumps(pr, indent=2))
+        spr = sorted([
+            (k, v) for k, v in pr.items()
+        ], key=lambda a: (-a[1], a[0]))
+        Path(f'{prefix}_pagerank_ranked.json').write_text(json.dumps(spr, indent=2))
+        # dirLink = {k: set(v['mention_freq'].keys()) for k, v in graph.items()}
+        revLink = {graph[k][label_key]: set() for k in graph.keys()}
+        for ks, v in graph.items():
+            ks = graph[ks][label_key]
+            for kd in v['mention_freq'].keys():
+                kd = graph[kd][label_key]
+                revLink[kd].add(ks)
+        sptr = {spr[0][0]: spr[0][0]}
+        for node, rank in spr[1:]:
+            maxNode = sorted([x for x in revLink[node] if x != node], key=lambda a: -pr[a])[0]
+            sptr[node] = maxNode
+        Path(f'{prefix}_pagerank_ranked_spannedtree.json').write_text(json.dumps(sptr, indent=2))
+        table = ["source,target"]
+        for ns, nd in sptr.items():
+            table.append(f"{ns},{nd}")
+        Path(f'{prefix}_pagerank_ranked_spannedtree.csv').write_text('\n'.join(table)+'\n')
 
 
 def main():
